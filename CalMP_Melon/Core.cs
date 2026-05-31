@@ -10,13 +10,14 @@ namespace CalMP_Melon
 {
     public class Core : MelonMod
     {
-        Steam steam = new Steam();
+        Steam steam;
 
         private bool showUI = true;
 
         public override void OnInitializeMelon()
         {
             LoggerInstance.Msg("Steam initialized");
+            steam = new Steam(LoggerInstance);
         }
 
         public override void OnGUI()

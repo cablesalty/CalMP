@@ -5,27 +5,32 @@ using System.Threading;
 using System.Threading.Tasks;
 using Steamworks;
 using Steamworks.Data;
+using MelonLoader;
 
 namespace CalMP_Melon
 {
     public class Steam
     {
+        private readonly MelonLogger.Instance logger;
+
+
         public Lobby CurrentLobby;
 
-        public Steam()
+        public Steam(MelonLogger.Instance logger)
         {
             SteamMatchmaking.OnLobbyMemberJoined += OnMemberJoined;
             SteamMatchmaking.OnLobbyMemberLeave += OnMemberLeft;
+            this.logger = logger;
         }
 
         private void OnMemberJoined(Lobby lobby, Friend member)
         {
-            Console.WriteLine($"{member.Name} joined the lobby");
+            logger.Msg($"{member.Name} joined the lobby");
         }
 
         private void OnMemberLeft(Lobby lobby, Friend member)
         {
-            Console.WriteLine($"{member.Name} left the lobby");
+            logger.Msg($"{member.Name} left the lobby");
         }
 
         public async Task<bool> CreateLobbyAsync(int maxPlayers, string lobbyName = "Lobby")
