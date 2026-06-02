@@ -22,6 +22,8 @@ This file tells MSBuild where your local game installation is located, allowing 
   </PropertyGroup>
 </Project>
 ```
+(The path must be the location of your game install (where the .exe is located), not the mods directory.
+You can open that directory in steam by clicking `Settings > Manage > Browse local files` on the game's page.)
 
 ## Building the Project
 
