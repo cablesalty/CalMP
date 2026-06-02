@@ -12,18 +12,41 @@ namespace CalMP_Melon
     public class Steam
     {
         private readonly MelonLogger.Instance logger;
-
-
         public Lobby CurrentLobby;
+
+        private static Steam _instance;
+
+        public static Steam Instance
+        {
+            get
+            {
+                return _instance;
+            }
+        }
+
+        public static void Init(MelonLogger.Instance logger)
+        {
+            if (_instance == null)
+                _instance = new Steam(logger);
+        }
 
         public Steam(MelonLogger.Instance logger)
         {
-            SteamMatchmaking.OnLobbyMemberJoined += OnMemberJoined;
-            SteamMatchmaking.OnLobbyMemberLeave += OnMemberLeft;
             this.logger = logger;
+
+            SteamMatchmaking.OnLobbyMemberJoined += OnLobbyMemberJoined;
+            SteamMatchmaking.OnLobbyMemberLeave += OnMemberLeft;
+            SteamFriends.OnGameLobbyJoinRequested += OnGameLobbyJoinRequested;
+            SteamClient.RunCallbacks();
         }
 
-        private void OnMemberJoined(Lobby lobby, Friend member)
+        private void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
+        {
+            logger.Msg($"Received a lobby join request from {steamId}");
+            SteamMatchmaking.JoinLobbyAsync(lobby.Id);
+        }
+
+        private void OnLobbyMemberJoined(Lobby lobby, Friend member)
         {
             logger.Msg($"{member.Name} joined the lobby");
         }

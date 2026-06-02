@@ -333,6 +333,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Compile Include="CalGUI.cs" />
 		<Compile Include="Core.cs" />
 		<Compile Include="Steam.cs" />
 		<Content Include="Directory.Build.props" />

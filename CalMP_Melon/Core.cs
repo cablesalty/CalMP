@@ -1,4 +1,5 @@
 ﻿using MelonLoader;
+using HarmonyLib;
 using UnityEngine;
 using Steamworks;
 using Steamworks.Data;
@@ -10,49 +11,44 @@ namespace CalMP_Melon
 {
     public class Core : MelonMod
     {
-        Steam steam;
-
+        private bool showNotificationUI = true;
         private bool showUI = true;
 
         public override void OnInitializeMelon()
         {
-            LoggerInstance.Msg("Steam initialized");
-            steam = new Steam(LoggerInstance);
+            HarmonyInstance.PatchAll();
+            Steam.Init(LoggerInstance);
         }
 
         public override void OnGUI()
         {
-            if (!showUI) return;
+            if (showUI)
+                CalGUI.DrawInterface();
 
-            GUILayout.BeginArea(new Rect(20, 20, 300, 200), GUI.skin.box);
-
-            GUILayout.Label("Cats are Liquid");
-
-            if (GUILayout.Button("Host Lobby"))
-            {
-                _ = steam.CreateLobbyAsync(3, "New Lobby");
-            }
-
-            GUILayout.Label($"LobbyID: {steam.CurrentLobby.Id}");
-
-            GUILayout.Label("Players:");
-            foreach (var player in steam.CurrentLobby.Members)
-            {
-                GUILayout.Label(" - " + player.Name);
-            }
-
-            GUILayout.EndArea();
+            if (showNotificationUI)
+                CalGUI.ShowNotification("Kabbeszalty");
         }
-
 
         public override void OnUpdate()
         {
             SteamClient.RunCallbacks();
+            if (Input.GetKeyDown(KeyCode.F1)) showUI = !showUI;
         }
 
         public override void OnApplicationQuit()
         {
-            SteamClient.Shutdown();
+             SteamClient.Shutdown();
+        }
+
+        //Patch Cursor Hiding
+
+        [HarmonyPatch(typeof(CanvasManager), "SetCursorHidden")]
+        public class CanvasmanagerPatch()
+        {
+            static bool Prefix(bool hidden)
+            {
+                return false;
+            }
         }
     }
 }
