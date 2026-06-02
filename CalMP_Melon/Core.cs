@@ -3,7 +3,7 @@ using UnityEngine;
 using Steamworks;
 using Steamworks.Data;
 
-[assembly: MelonInfo(typeof(CalMP_Melon.Core), "CalMP_Melon", "1.0.67", "cablesalty feat. antalervin19", null)]
+[assembly: MelonInfo(typeof(CalMP_Melon.Core), "CalMP_Melon", "1.0.0", "cablesalty feat. antalervin19", null)]
 [assembly: MelonGame("Last Quarter Studios", "Cats are Liquid - A Better Place")]
 
 namespace CalMP_Melon
