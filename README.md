@@ -11,6 +11,15 @@
 3. Copy the mod into the game's `mods` folder (game's folder can be opened by locating the game in your steam library, then clicking `Settings > Manage > Browse local files`)
 4. Launch the game. If you succeeded, there should be a notification telling you the mod loaded correctly.
 
+# Roadmap
+This mod is still under development. As such, some features you might expect might not be present yet.
+
+✅ means completed, 🟧 means that this feature is in development, ⬛ means the development has not yet started.
+- 🟧 Basic lobby management, inviting and kicking players, assinging players to cats, etc...
+- ⬛ Basics of the multiplayer working
+- ⬛ Adding a cat when the worldpack doesn't support
+- ⬛ Automatic worldpack sharing (the mod auto-downloads the required worldpack for you)
+
 # Building and Contributing
 These are the steps required if you want to build the project for yourself, or if you want to contribute. **This is NOT required if you just want to play**.
 
