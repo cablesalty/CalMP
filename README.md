@@ -1,4 +1,7 @@
-# Cats are Liquid - A Better Place | Steam Multiplayer Mod
+<h1 align="center">Cats are Liquid - A Better Place // Multiplayer Mod</h1>
+
+![Cats are Liquid - Multiplayer](banner.jpg)
+This is a multiplayer mod for the game [Cats are Liquid - A Better Place](https://store.steampowered.com/app/1188080/Cats_are_Liquid__A_Better_Place/), that uses Steam networking.
 
 # Installation
 **To use this mod (or to contribute to the project), you must own the game on Steam.** This mod uses steam networking to make and host lobbies, therefore you cannot use the itch.io version.
