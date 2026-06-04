@@ -12,9 +12,9 @@ namespace CalMP_Melon
     public class Core : MelonMod
     {
         private bool showUI = true;
-        private bool showNotificationUI = false;
-        private string notificationMessage;
-        private float notificationEndTime;
+        private static bool showNotificationUI = false;
+        private static string notificationMessage;
+        private static float notificationEndTime;
 
         // --- Event Methods ---
 
@@ -54,7 +54,7 @@ namespace CalMP_Melon
 
         // --- Helpers ---
 
-        public void ShowNotification(string message, float duration = 5f)
+        public static void ShowNotification(string message, float duration = 5f)
         {
             notificationMessage = message;
             notificationEndTime = Time.time + duration;

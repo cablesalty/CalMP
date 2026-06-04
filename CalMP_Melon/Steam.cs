@@ -1,11 +1,12 @@
-﻿using System;
+﻿using MelonLoader;
+using Rewired;
+using Steamworks;
+using Steamworks.Data;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Steamworks;
-using Steamworks.Data;
-using MelonLoader;
 
 namespace CalMP_Melon
 {
@@ -43,17 +44,20 @@ namespace CalMP_Melon
         private void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
         {
             logger.Msg($"Received a lobby join request from {steamId}");
+            Core.ShowNotification($"A member has requested to join, accepting...");
             SteamMatchmaking.JoinLobbyAsync(lobby.Id);
         }
 
         private void OnLobbyMemberJoined(Lobby lobby, Friend member)
         {
             logger.Msg($"{member.Name} joined the lobby");
+            Core.ShowNotification($"{member.Name} joined the lobby.");
         }
 
         private void OnMemberLeft(Lobby lobby, Friend member)
         {
             logger.Msg($"{member.Name} left the lobby");
+            Core.ShowNotification($"{member.Name} left the lobby.");
         }
 
         public async Task<bool> CreateLobbyAsync(int maxPlayers, string lobbyName = "Lobby")

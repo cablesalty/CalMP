@@ -1,6 +1,7 @@
 ﻿using CalMP_Melon;
-using UnityEngine;
+using Rewired;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace CalMP_Melon
 {
