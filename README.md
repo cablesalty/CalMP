@@ -1,7 +1,7 @@
 # Cats are Liquid - A Better Place | Steam Multiplayer Mod
 
 # Installation
-**To use this mod (or to contribute to the project), you must own the game on Steam, and you must use a computer.** This mod uses steam networking to make and host lobbies, therefore you cannot use it on mobile or with the Itch version.
+**To use this mod (or to contribute to the project), you must own the game on Steam.** This mod uses steam networking to make and host lobbies, therefore you cannot use the itch.io version.
 
 ## Installation video
 
@@ -41,6 +41,31 @@ After you modded the game using MelonLoader, follow these steps if you want to b
 5. Check if MSBuild success copied the mod into the game's `mods` directory, then start the game to test it.
 
 ## Contributing
-Before making any contributions, read the [contribution guidelines](CONTRIBUTING.md).
+<!-- Before contributing, please read the [contribution guidelines](CONTRIBUTING.md). -->
+All contributions on the project are welcome. You can contribute to the code, report bugs or suggest features.
+
+**If you like the project but don't have time to make a contribution directly, that's fine! There are other ways to show your appreciation, for example by sharing it with friends or talking about it on social media.**
+
+### Licensing and copyright
+By submitting a Pull Request to this repository, you agree that your contributions will be licensed under the project's current [GNU GPLv3 License](LICENSE).
+
+### Reporting bugs
+Please report bugs through the [Issues](https://github.com/cablesalty/CalMP/issues) tab. Before submitting, please check the existing issues to see if they are already reported. If not, open a new issue and include the following details:
+- A clear title summarizing the problem
+- Steps to reproduce the issue
+- Details of your environment (ex.: Your OS, game version)
+- Screenshots or error logs (if applicable)
+
+### Submitting a Pull Request
+If you are ready to contribute to the project by writing and submitting code:
+- Fork the repository, and create your own branch from the `main` branch
+- Make your changes **(Make sure they are small and focused on a single task)**
+- Test out your changes
+- Submit a Pull Request to our `main` branch, with a clear description of the changes you did
+
+After submitting your PR, a maintainer will review your code, request changes if necessary, and merge it when it's ready.
+
+### Again, thank you for contributing to the project!
 
 # Notes
+Thanks to [antalervin19](https://github.com/antalervin19) for doing a big chunk of the work!
