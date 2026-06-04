@@ -11,13 +11,21 @@ namespace CalMP_Melon
 {
     public class Core : MelonMod
     {
-        private bool showNotificationUI = true;
         private bool showUI = true;
+        private bool showNotificationUI = false;
+        private string notificationMessage;
+        private float notificationEndTime;
+
+        // --- Event Methods ---
 
         public override void OnInitializeMelon()
         {
             HarmonyInstance.PatchAll();
             Steam.Init(LoggerInstance);
+            ShowNotification(
+                "Mod has initialized successfully.\n\n" +
+                "Press F1 to open the lobby interface"
+            );
         }
 
         public override void OnGUI()
@@ -26,7 +34,11 @@ namespace CalMP_Melon
                 CalGUI.DrawInterface();
 
             if (showNotificationUI)
-                CalGUI.ShowNotification("Kabbeszalty");
+            {
+                // I know this shows for a frame after, but frankly, I don't give a fuck
+                if (notificationEndTime <= Time.time) showNotificationUI = false;
+                CalGUI.ShowNotificationInterface(notificationMessage, notificationEndTime - Time.time);
+            }
         }
 
         public override void OnUpdate()
@@ -40,8 +52,19 @@ namespace CalMP_Melon
              SteamClient.Shutdown();
         }
 
-        //Patch Cursor Hiding
+        // --- Helpers ---
 
+        public void ShowNotification(string message, float duration = 5f)
+        {
+            notificationMessage = message;
+            notificationEndTime = Time.time + duration;
+            showNotificationUI = true;
+        }
+
+        // --- Patches ---
+
+        // Cursor patch to always show cursor
+        // TODO: Remove in first stable build
         [HarmonyPatch(typeof(CanvasManager), "SetCursorHidden")]
         public class CanvasmanagerPatch()
         {

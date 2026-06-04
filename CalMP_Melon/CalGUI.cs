@@ -4,17 +4,9 @@ using System.Threading.Tasks;
 
 namespace CalMP_Melon
 {
-    // TODO: Simplify how notifications are handled
-    public class Notification
-    {
-        public string Message;
-        public float EndTime;
-    }
-
     public class CalGUI
     {
         private static Steam steam = Steam.Instance;
-        private static Notification activeNotification;
 
         public static void DrawInterface()
         {
@@ -38,29 +30,10 @@ namespace CalMP_Melon
             GUILayout.EndArea();
         }
 
-        public static void ShowNotification(string message, float time = 5f)
+        public static void ShowNotificationInterface(string message, float timeRemaining)
         {
-            activeNotification = new Notification
-            {
-                Message = message,
-                EndTime = Time.time + time * 1000
-            };
-
-        }
-
-        public static void DrawNotificationInterface()
-        {
-            if (activeNotification == null)
-                return;
-
-            if (Time.time > activeNotification.EndTime)
-            {
-                activeNotification = null;
-                return;
-            }
-
-            GUILayout.BeginArea(new Rect(Screen.width - 320, Screen.height - 100, 300, 80), GUI.skin.box);
-            GUILayout.Label(activeNotification.Message);
+            GUILayout.BeginArea(new Rect(20, Screen.height - 100, 300, 80), GUI.skin.box);
+            GUILayout.Label($"Cats are Liquid Multiplayer ({Math.Round(timeRemaining)}s)\n{message}");
             GUILayout.EndArea();
         }
     }
