@@ -41,11 +41,25 @@ namespace CalMP_Melon
             SteamClient.RunCallbacks();
         }
 
-        private void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
+        private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
         {
-            logger.Msg($"Received a lobby join request from {steamId}");
-            Core.ShowNotification($"A member has requested to join, accepting...");
-            SteamMatchmaking.JoinLobbyAsync(lobby.Id);
+            logger.Msg($"Received a lobby join request for lobby: {lobby.Id}");
+            Core.ShowNotification($"Joining lobby...");
+
+            var joinResult = await SteamMatchmaking.JoinLobbyAsync(lobby.Id);
+
+            if (joinResult.HasValue) //Check if the join was successful (dumb Facepunch API..)
+            {
+                //This is required to set the CurrentLobby for the Client too! Othervise the client wont see the lobby.
+                CurrentLobby = joinResult.Value;
+                logger.Msg("Successfully joined the lobby.");
+                Core.ShowNotification("Joined lobby successfully!");
+            }
+            else
+            {
+                logger.Error("Failed to join lobby.");
+                Core.ShowNotification("Failed to join lobby.");
+            }
         }
 
         private void OnLobbyMemberJoined(Lobby lobby, Friend member)
@@ -73,6 +87,16 @@ namespace CalMP_Melon
             CurrentLobby = lobby;
 
             return true;
+        }
+        public void LeaveLobby()
+        {
+            if (CurrentLobby.Id.Value != 0)
+            {
+                CurrentLobby.Leave();
+                CurrentLobby = default;
+                logger.Msg("Left the lobby.");
+                Core.ShowNotification("You have left the lobby.");
+            }
         }
     }
 }
