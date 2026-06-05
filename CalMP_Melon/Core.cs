@@ -4,8 +4,6 @@ using ProphecySystem;
 using Steamworks;
 using Steamworks.Data;
 using UnityEngine;
-using static Cinemachine.DocumentationSortingAttribute;
-using static ThemeSystem;
 
 [assembly: MelonInfo(typeof(CalMP_Melon.Core), "CalMP_Melon", "1.0.0", "cablesalty feat. antalervin19", null)]
 [assembly: MelonGame("Last Quarter Studios", "Cats are Liquid - A Better Place")]
@@ -49,7 +47,8 @@ namespace CalMP_Melon
             SteamClient.RunCallbacks();
             if (Input.GetKeyDown(KeyCode.F1)) showUI = !showUI;
             if (Input.GetKeyDown(KeyCode.F2)) InjectLocalCatScript(); // TODO: Remove in first stable build
-            if (Input.GetKeyDown(KeyCode.F3))
+            if (Input.GetKeyDown(KeyCode.F3)) InjectNPCCatScript();
+            if (Input.GetKeyDown(KeyCode.F4))
             {
                 //[12:50:43.021] [CalMP_Melon] Object search: Game Center
                 //[12:50:43.021] [CalMP_Melon] Object search: Settings Resetter
@@ -139,9 +138,17 @@ namespace CalMP_Melon
             localCat.AddComponent<LocalPlayerNetworkSync>();
         }
 
+        public static void InjectNPCCatScript()
+        {
+            GameObject npcCat = FindNPCCat();
+
+            if (npcCat == null || npcCat.GetComponent<RemotePlayerNetworkSync>() != null) return;
+            npcCat.AddComponent<RemotePlayerNetworkSync>();
+        }
+
         public static GameObject FindLocalCat()
         {
-            return GameObject.FindWithTag("Player").transform.Find("Cat Part 0").gameObject;
+            return GameObject.FindWithTag("Player");
         }
 
         public static GameObject FindNPCCat(string catType = "green")
@@ -159,6 +166,19 @@ namespace CalMP_Melon
             static bool Prefix(bool hidden)
             {
                 return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(UnityEngine.Object), "Instantiate",
+    new[] { typeof(UnityEngine.Object) })]
+        class InstantiatePatch
+        {
+            static void Postfix(UnityEngine.Object __result)
+            {
+                if (__result is GameObject go)
+                {
+                    MelonLogger.Msg($"Spawned: {go.name}");
+                }
             }
         }
     }
