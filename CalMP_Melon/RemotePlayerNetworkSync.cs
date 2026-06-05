@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Playables;
+using Steamworks;
 
 namespace CalMP_Melon
 {
@@ -15,6 +16,8 @@ namespace CalMP_Melon
         private bool lastLiquidState;
 
         private GameObject catPart;
+
+        public SteamId OwnerId;
 
         private const float InterpolationSpeed = 15f;
 

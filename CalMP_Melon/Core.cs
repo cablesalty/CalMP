@@ -17,6 +17,8 @@ namespace CalMP_Melon
         private static string notificationMessage;
         private static float notificationEndTime;
 
+        public static GameObject[] AvailableNPCs;
+
         // --- Event Methods ---
 
         public override void OnInitializeMelon()
@@ -140,10 +142,18 @@ namespace CalMP_Melon
 
         public static void InjectNPCCatScript()
         {
-            GameObject npcCat = FindNPCCat();
+            List<GameObject> allCats = FindNPCCat();
 
-            if (npcCat == null || npcCat.GetComponent<RemotePlayerNetworkSync>() != null) return;
-            npcCat.AddComponent<RemotePlayerNetworkSync>();
+            if (allCats == null || allCats.Count == 0) return;
+
+            foreach (GameObject cat in allCats)
+            {
+                if (cat.GetComponent<RemotePlayerNetworkSync>() != null) continue;
+
+                cat.AddComponent<RemotePlayerNetworkSync>();
+
+                AvailableNPCs.Append(cat);
+            }
         }
 
         public static GameObject FindLocalCat()
@@ -151,9 +161,13 @@ namespace CalMP_Melon
             return GameObject.FindWithTag("Player");
         }
 
-        public static GameObject FindNPCCat(string catType = "green")
+        public static List<GameObject> FindNPCCat(string catType = "green")
         {
-            return GameObject.Find("NPC Cat(Clone)");
+            GameObject[] allCats = UnityEngine.Object.FindObjectsOfType<GameObject>();
+
+            List<GameObject> npcCats = allCats.Where(obj => obj.name.Contains("NPC Cat(Clone)")).ToList();
+
+            return npcCats;
         }
 
         // --- Patches ---
@@ -166,19 +180,6 @@ namespace CalMP_Melon
             static bool Prefix(bool hidden)
             {
                 return false;
-            }
-        }
-
-        [HarmonyPatch(typeof(UnityEngine.Object), "Instantiate",
-    new[] { typeof(UnityEngine.Object) })]
-        class InstantiatePatch
-        {
-            static void Postfix(UnityEngine.Object __result)
-            {
-                if (__result is GameObject go)
-                {
-                    MelonLogger.Msg($"Spawned: {go.name}");
-                }
             }
         }
     }
