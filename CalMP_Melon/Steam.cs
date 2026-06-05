@@ -13,7 +13,7 @@ namespace CalMP_Melon
     public class Steam
     {
         private readonly MelonLogger.Instance logger;
-        public Lobby CurrentLobby;
+        public static Lobby CurrentLobby;
 
         private static Steam _instance;
 
@@ -88,14 +88,28 @@ namespace CalMP_Melon
 
             return true;
         }
+
         public void LeaveLobby()
         {
-            if (CurrentLobby.Id.Value != 0)
+            if (CurrentLobby.Id.IsValid)
             {
                 CurrentLobby.Leave();
                 CurrentLobby = default;
                 logger.Msg("Left the lobby.");
                 Core.ShowNotification("You have left the lobby.");
+            }
+        }
+
+        public static void SendPlayerStatePacket(PlayerStatePacket packet)
+        {
+            if (!CurrentLobby.Id.IsValid) return;
+
+            byte[] data = packet.Serialize();
+
+            foreach (var member in CurrentLobby.Members)
+            {
+                if (member.Id == SteamClient.SteamId) continue;
+                SteamNetworking.SendP2PPacket(member.Id, data, data.Length, 0, P2PSend.Unreliable);
             }
         }
     }

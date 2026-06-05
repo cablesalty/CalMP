@@ -23,7 +23,7 @@ namespace CalMP_Melon
                 return;
             }
 
-            bool inLobby = steam.CurrentLobby.Id.Value != 0;
+            bool inLobby = Steam.CurrentLobby.Id.Value != 0;
 
             // If the User Hosts a lobby, their "Host Lobby" button will turn into a "Disband Lobby" button
             //
@@ -39,7 +39,7 @@ namespace CalMP_Melon
             }
             else
             {
-                bool isHost = steam.CurrentLobby.Owner.IsMe;
+                bool isHost = Steam.CurrentLobby.Owner.IsMe;
 
                 if (isHost)
                 {
@@ -57,15 +57,15 @@ namespace CalMP_Melon
                 }
 
                 GUILayout.Space(10);
-                GUILayout.Label($"LobbyID: {steam.CurrentLobby.Id}");
+                GUILayout.Label($"LobbyID: {Steam.CurrentLobby.Id}");
 
                 // Updated the Player list to show Host and "You".
 
                 GUILayout.Label("Players:");
-                foreach (var player in steam.CurrentLobby.Members)
+                foreach (var player in Steam.CurrentLobby.Members)
                 {
                     string role = player.IsMe ? " (You)" : "";
-                    if (player.Id == steam.CurrentLobby.Owner.Id) role += " [Host]";
+                    if (player.Id == Steam.CurrentLobby.Owner.Id) role += " [Host]";
 
                     GUILayout.Label($" - {player.Name}{role}");
                 }

@@ -335,6 +335,8 @@
 	<ItemGroup>
 		<Compile Include="CalGUI.cs" />
 		<Compile Include="Core.cs" />
+		<Compile Include="NetworkPackets.cs" />
+		<Compile Include="LocalPlayerNetworkSync.cs" />
 		<Compile Include="Steam.cs" />
 		<Content Include="Directory.Build.props" />
 	</ItemGroup>
