@@ -4,7 +4,7 @@ using System.Text;
 
 namespace CalMP_Melon
 {
-    public enum PacketType : Byte
+    public enum PacketType : byte
     {
         Movement = 0,
         // Add chat and other stuff later

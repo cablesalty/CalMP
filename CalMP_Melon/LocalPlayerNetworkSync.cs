@@ -19,20 +19,20 @@ namespace CalMP_Melon
         void FixedUpdate()
         {
             catPart = gameObject.transform.Find("Cat Part 0").gameObject;
-            //SendNPCState();
+            SendPlayerState();
             //Core.ShowNotification($"X: {catPart.transform.position.x}, Y: {catPart.transform.position.x}");
         }
 
-        private void SendNPCState()
+        private void SendPlayerState()
         {
             var packet = new PlayerStatePacket
             {
-                X = transform.position.x,
-                Y = transform.position.y,
+                X = catPart.transform.position.x,
+                Y = catPart.transform.position.y,
                 // Note to ervin: turns out .velocity is deprecated
                 VelocityX = rb != null ? rb.linearVelocity.x : 0f,
                 VelocityY = rb != null ? rb.linearVelocity.y : 0f,
-                IsInLiquidForm = false // TODO: Implement check
+                IsInLiquidForm = false // TODO: Implement check //Todo, Todo, Todo
             };
 
             Steam.SendPlayerStatePacket(packet);

@@ -14,8 +14,8 @@ namespace CalMP_Melon
     {
         private readonly MelonLogger.Instance logger;
         public static Lobby CurrentLobby;
-
         private static Steam _instance;
+        private CancellationTokenSource receiveTokenSource;
 
         public static Steam Instance
         {
@@ -39,6 +39,7 @@ namespace CalMP_Melon
             SteamMatchmaking.OnLobbyMemberLeave += OnMemberLeft;
             SteamFriends.OnGameLobbyJoinRequested += OnGameLobbyJoinRequested;
             SteamClient.RunCallbacks();
+            StartReceiving();
         }
 
         private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
@@ -61,6 +62,64 @@ namespace CalMP_Melon
                 Core.ShowNotification("Failed to join lobby.");
             }
         }
+
+        //Receiving & Sending Functions
+        public void StartReceiving()
+        {
+            StopReceiving();
+            receiveTokenSource = new CancellationTokenSource();
+            Task.Run(() => ReceiveLoop(receiveTokenSource.Token));
+        }
+
+        public void StopReceiving()
+        {
+            receiveTokenSource?.Cancel();
+            receiveTokenSource?.Dispose();
+            receiveTokenSource = null;
+        }
+
+        private async Task ReceiveLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                while (SteamNetworking.IsP2PPacketAvailable(0))
+                {
+                    var packet = SteamNetworking.ReadP2PPacket();
+                    if (packet.HasValue)
+                    {
+                        ProcessIncomingPacket(packet.Value.SteamId, packet.Value.Data);
+                    }
+                }
+                await Task.Delay(16, token); //16ms ~ 60FPS
+            }
+        }
+
+        private void ProcessIncomingPacket(SteamId senderId, byte[] data)
+        {
+            if (data == null || data.Length == 0) return;
+
+            PacketType packetType = (PacketType)data[0];
+
+            switch (packetType)
+            {
+                case PacketType.Movement:
+                    PlayerStatePacket statePacket = PlayerStatePacket.Deserialize(data);
+
+                    //Do movement
+                    HandlePlayerMovement(senderId, statePacket);
+                    break;
+
+                default:
+                    logger.Warning($"Received unknown packet type ID: {data[0]}");
+                    break;
+            }
+        }
+
+        private void HandlePlayerMovement(SteamId playerSteamId, PlayerStatePacket packet)
+        { }
+
+
+        // Callback Hooks
 
         private void OnLobbyMemberJoined(Lobby lobby, Friend member)
         {
