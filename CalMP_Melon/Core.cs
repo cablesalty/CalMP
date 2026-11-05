@@ -4,6 +4,7 @@ using ProphecySystem;
 using Steamworks;
 using Steamworks.Data;
 using UnityEngine;
+using System.Collections.Generic;
 
 [assembly: MelonInfo(typeof(CalMP_Melon.Core), "CalMP_Melon", "1.0.0", "cablesalty feat. antalervin19", null)]
 [assembly: MelonGame("Last Quarter Studios", "Cats are Liquid - A Better Place")]
@@ -17,7 +18,7 @@ namespace CalMP_Melon
         private static string notificationMessage;
         private static float notificationEndTime;
 
-        public static GameObject[] AvailableNPCs;
+        public static List<GameObject> AvailableNPCs = new List<GameObject>();
 
         // --- Event Methods ---
 
@@ -50,6 +51,37 @@ namespace CalMP_Melon
             if (Input.GetKeyDown(KeyCode.F1)) showUI = !showUI;
             if (Input.GetKeyDown(KeyCode.F2)) InjectLocalCatScript(); // TODO: Remove in first stable build
             if (Input.GetKeyDown(KeyCode.F3)) InjectNPCCatScript();
+            // Debug: simulate incoming packet routing to test receive path
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+                MelonLoader.MelonLogger.Msg("[Core] Simulating incoming player state packet (F5)");
+                try
+                {
+                    if (Steam.Instance != null)
+                    {
+                        var local = FindLocalCat();
+                        if (local != null)
+                        {
+                            var found = local.transform.Find("Cat Part 0");
+                            var pos = found != null ? found.position : local.transform.position;
+                            PlayerStatePacket p = new PlayerStatePacket { X = pos.x, Y = pos.y, VelocityX = 0f, VelocityY = 0f, IsInLiquidForm = false };
+                            Steam.Instance.RouteIncomingPlayerState(SteamClient.SteamId, p);
+                        }
+                        else
+                        {
+                            MelonLoader.MelonLogger.Msg("[Core] No local player found to simulate packet from.");
+                        }
+                    }
+                    else
+                    {
+                        MelonLoader.MelonLogger.Msg("[Core] Steam.Instance is null; cannot simulate packet.");
+                    }
+                }
+                catch (Exception e)
+                {
+                    MelonLoader.MelonLogger.Msg("[Core] Exception while simulating packet: " + e);
+                }
+            }
             if (Input.GetKeyDown(KeyCode.F4))
             {
                 //[12:50:43.021] [CalMP_Melon] Object search: Game Center
@@ -120,6 +152,7 @@ namespace CalMP_Melon
 
         public void OnSceneLoaded()
         {
+            AvailableNPCs.Clear();
             InjectLocalCatScript();
         }
 
@@ -137,6 +170,7 @@ namespace CalMP_Melon
             GameObject localCat = FindLocalCat();
 
             if (localCat == null || localCat.GetComponent<LocalPlayerNetworkSync>() != null) return;
+            ShowNotification("Found player");
             localCat.AddComponent<LocalPlayerNetworkSync>();
         }
 
@@ -146,13 +180,15 @@ namespace CalMP_Melon
 
             if (allCats == null || allCats.Count == 0) return;
 
+            ShowNotification("Found " + allCats.Count);
+
             foreach (GameObject cat in allCats)
             {
                 if (cat.GetComponent<RemotePlayerNetworkSync>() != null) continue;
+                if (AvailableNPCs.Contains(cat)) continue;
 
                 cat.AddComponent<RemotePlayerNetworkSync>();
-
-                AvailableNPCs.Append(cat);
+                AvailableNPCs.Add(cat);
             }
         }
 

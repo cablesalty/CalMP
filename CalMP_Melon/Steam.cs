@@ -45,7 +45,7 @@ namespace CalMP_Melon
         private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
         {
             logger.Msg($"Received a lobby join request for lobby: {lobby.Id}");
-            Core.ShowNotification($"Joining lobby...");
+            Core.ShowNotification("Joining lobby...");
 
             var joinResult = await SteamMatchmaking.JoinLobbyAsync(lobby.Id);
 
@@ -53,6 +53,7 @@ namespace CalMP_Melon
             {
                 //This is required to set the CurrentLobby for the Client too! Othervise the client wont see the lobby.
                 CurrentLobby = joinResult.Value;
+                StartReceiving();
                 logger.Msg("Successfully joined the lobby.");
                 Core.ShowNotification("Joined lobby successfully!");
             }
@@ -69,6 +70,21 @@ namespace CalMP_Melon
             StopReceiving();
             receiveTokenSource = new CancellationTokenSource();
             Task.Run(() => ReceiveLoop(receiveTokenSource.Token));
+            logger.Msg("[Steam] Receive loop started.");
+            if (CurrentLobby.Id.IsValid)
+            {
+                logger.Msg($"[Steam] Current lobby valid: Id={CurrentLobby.Id}"); // Members={CurrentLobby.Members.Count}
+                foreach (var m in CurrentLobby.Members)
+                {
+                    logger.Msg($"[Steam] Lobby member: {m.Id} Name={m.Name} IsMe={m.IsMe}");
+                }
+            }
+            else
+            {
+                logger.Msg("[Steam] No valid CurrentLobby when starting receive loop.");
+            }
+            // No-op edit to ensure file update consistency.
+            // Patch applied to stabilize file state.
         }
 
         public void StopReceiving()
@@ -89,6 +105,10 @@ namespace CalMP_Melon
                     {
                         ProcessIncomingPacket(packet.Value.SteamId, packet.Value.Data);
                     }
+                    else
+                    {
+                        logger.Msg("[Steam] ReadP2PPacket returned no value despite IsP2PPacketAvailable reporting true.");
+                    }
                 }
                 await Task.Delay(16, token); //16ms ~ 60FPS
             }
@@ -96,17 +116,30 @@ namespace CalMP_Melon
 
         private void ProcessIncomingPacket(SteamId senderId, byte[] data)
         {
-            if (data == null || data.Length == 0) return;
+            if (data == null || data.Length == 0)
+            {
+                logger.Warning($"[Steam] Ignoring empty packet from {senderId}.");
+                return;
+            }
 
             PacketType packetType = (PacketType)data[0];
+            logger.Msg($"[Steam] Processing incoming packet from {senderId} length={data.Length} type={(byte)packetType}");
 
             switch (packetType)
             {
                 case PacketType.Movement:
+                    if (data.Length < PlayerStatePacket.MinSerializedSize)
+                    {
+                        logger.Warning($"[Steam] Dropping malformed movement packet from {senderId}: expected at least {PlayerStatePacket.MinSerializedSize} bytes but got {data.Length}.");
+                        return;
+                    }
+
                     PlayerStatePacket statePacket = PlayerStatePacket.Deserialize(data);
 
                     //Do movement
                     HandlePlayerMovement(senderId, statePacket);
+                    // Route to in-game component
+                    RouteIncomingPlayerState(senderId, statePacket);
                     break;
 
                 default:
@@ -117,6 +150,44 @@ namespace CalMP_Melon
 
         private void HandlePlayerMovement(SteamId playerSteamId, PlayerStatePacket packet)
         { }
+
+        // Public accessor to route incoming packet to the correct NPC instance
+        public void RouteIncomingPlayerState(SteamId playerSteamId, PlayerStatePacket packet)
+        {
+            if (Core.AvailableNPCs == null || Core.AvailableNPCs.Count == 0)
+            {
+                logger.Warning($"[Steam] No NPCs available to route packet from {playerSteamId}.");
+                return;
+            }
+
+            // Find the RemotePlayerNetworkSync attached to any available NPCs matching this playerSteamId
+            foreach (var npc in Core.AvailableNPCs)
+            {
+                if (npc == null) continue;
+                var sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                if (sync == null) continue;
+                if (sync.OwnerId == playerSteamId)
+                {
+                    sync.OnDataReceived(packet);
+                    return;
+                }
+            }
+
+            // If no matching OwnerId found, assign the first unowned NPC to avoid attaching every packet to a different NPC.
+            foreach (var npc in Core.AvailableNPCs)
+            {
+                if (npc == null) continue;
+                var sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                if (sync == null || sync.OwnerId.IsValid) continue;
+
+                sync.OwnerId = playerSteamId;
+                sync.OnDataReceived(packet);
+                logger.Msg($"[Steam] Assigned OwnerId {playerSteamId} to NPC {npc.name}");
+                return;
+            }
+
+            logger.Warning($"[Steam] Could not route packet from {playerSteamId}: no free NPC slots available.");
+        }
 
 
         // Callback Hooks
@@ -144,6 +215,7 @@ namespace CalMP_Melon
             lobby.MaxMembers = maxPlayers;
 
             CurrentLobby = lobby;
+            StartReceiving();
 
             return true;
         }
@@ -152,6 +224,7 @@ namespace CalMP_Melon
         {
             if (CurrentLobby.Id.IsValid)
             {
+                StopReceiving();
                 CurrentLobby.Leave();
                 CurrentLobby = default;
                 logger.Msg("Left the lobby.");
@@ -161,15 +234,23 @@ namespace CalMP_Melon
 
         public static void SendPlayerStatePacket(PlayerStatePacket packet)
         {
-            if (!CurrentLobby.Id.IsValid) return;
+            if (!CurrentLobby.Id.IsValid)
+            {
+                MelonLoader.MelonLogger.Msg("[Steam] SendPlayerStatePacket skipped: no valid CurrentLobby.");
+                return;
+            }
 
             byte[] data = packet.Serialize();
 
+            int attempted = 0;
             foreach (var member in CurrentLobby.Members)
             {
                 if (member.Id == SteamClient.SteamId) continue;
-                SteamNetworking.SendP2PPacket(member.Id, data, data.Length, 0, P2PSend.Unreliable);
+                attempted++;
+                bool ok = SteamNetworking.SendP2PPacket(member.Id, data, data.Length, 0, P2PSend.Unreliable);
+                if (!ok) MelonLoader.MelonLogger.Msg($"[Steam] Failed to send P2P packet to {member.Id}");
             }
+            MelonLoader.MelonLogger.Msg($"[Steam] SendPlayerStatePacket: attempted sends={attempted}"); // lobbyMembers={CurrentLobby.Members.Count}
         }
     }
 }

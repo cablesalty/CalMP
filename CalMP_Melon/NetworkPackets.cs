@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.IO;
 
 namespace CalMP_Melon
 {
@@ -12,6 +13,8 @@ namespace CalMP_Melon
 
     public struct PlayerStatePacket
     {
+        public const int MinSerializedSize = 1 + (sizeof(float) * 4) + sizeof(bool);
+
         public float X;
         public float Y;
         public float VelocityX;
@@ -42,6 +45,11 @@ namespace CalMP_Melon
         // Convert Byte Array -> Struct (Skip the first byte because it's the PacketType)
         public static PlayerStatePacket Deserialize(byte[] data)
         {
+            if (data == null || data.Length < MinSerializedSize)
+            {
+                throw new ArgumentException($"Movement packet must be at least {MinSerializedSize} bytes, got {data?.Length ?? 0}.", nameof(data));
+            }
+
             using (MemoryStream ms = new MemoryStream(data))
             {
                 using (BinaryReader reader = new BinaryReader(ms))

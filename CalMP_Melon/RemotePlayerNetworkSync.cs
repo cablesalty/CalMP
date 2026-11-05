@@ -11,11 +11,15 @@ namespace CalMP_Melon
 {
     public class RemotePlayerNetworkSync : MonoBehaviour
     {
-        private Vector2 targetPosition;
+        private Vector3 targetPosition;
         private Vector2 lastVelocity;
         private bool lastLiquidState;
 
         private GameObject catPart;
+        // Thread-safe packet handoff: network thread enqueues last packet, main thread applies it in FixedUpdate
+        private PlayerStatePacket pendingPacket;
+        private readonly object packetLock = new object();
+        private bool hasPendingPacket = false;
 
         public SteamId OwnerId;
 
@@ -23,30 +27,68 @@ namespace CalMP_Melon
 
         void Start()
         {
-            catPart = gameObject.transform.Find("Cat Part 0").gameObject;
-            targetPosition = catPart.transform.position;
+            var found = gameObject.transform.Find("Cat Part 0");
+            if (found != null)
+            {
+                catPart = found.gameObject;
+                targetPosition = catPart.transform.position;
+            }
+            else
+            {
+                Debug.Log("[RemotePlayerNetworkSync] Could not find 'Cat Part 0' on object. Falling back to root transform.");
+                catPart = gameObject;
+                targetPosition = gameObject.transform.position;
+            }
+    MelonLoader.MelonLogger.Msg($"[RemotePlayerNetworkSync] Started for OwnerId={OwnerId} initialPos={targetPosition}"); // touched for consistency.
             // TODO: Add prophecy moves for the cat (for smoother movement)
         }
 
         void FixedUpdate()
         {
-            catPart.transform.position = Vector2.Lerp(catPart.transform.position, targetPosition, Time.deltaTime * InterpolationSpeed);
+            if (catPart == null) return;
+            // Apply pending network packet on main thread if present
+            PlayerStatePacket? packetToApply = null;
+            lock (packetLock)
+            {
+                if (hasPendingPacket)
+                {
+                    packetToApply = pendingPacket;
+                    hasPendingPacket = false;
+                }
+            }
+
+            if (packetToApply.HasValue)
+            {
+                var packet = packetToApply.Value;
+                // Update targetPosition directly (keeps z)
+                targetPosition = new Vector3(packet.X, packet.Y, catPart.transform.position.z);
+                lastVelocity = new Vector2(packet.VelocityX, packet.VelocityY);
+                if (packet.IsInLiquidForm != lastLiquidState)
+                {
+                    if (packet.IsInLiquidForm)
+                        InvokeProphecyAction("SwitchToLiquidState");
+                    else
+                        InvokeProphecyAction("SwitchToDefaultState");
+
+                    lastLiquidState = packet.IsInLiquidForm;
+                }
+            }
+
+            // Use fixedDeltaTime in FixedUpdate for stable interpolation
+            catPart.transform.position = Vector3.Lerp(catPart.transform.position, targetPosition, Time.fixedDeltaTime * InterpolationSpeed);
             //Core.ShowNotification($"X: {catPart.transform.position.x}, Y: {catPart.transform.position.x}");
         }
 
         public void OnDataReceived(PlayerStatePacket packet)
         {
-            targetPosition = new Vector2(packet.X, packet.Y);
-            lastVelocity = new Vector2(packet.VelocityX, packet.VelocityY);
+            // Log incoming network data for debugging
+            MelonLoader.MelonLogger.Msg($"[RemotePlayerNetworkSync] OnDataReceived called for OwnerId={OwnerId} rawPacket: X={packet.X} Y={packet.Y} VX={packet.VelocityX} VY={packet.VelocityY} IsInLiquidForm={packet.IsInLiquidForm}");
 
-            if (packet.IsInLiquidForm != lastLiquidState)
+            // Enqueue packet for main-thread application in FixedUpdate
+            lock (packetLock)
             {
-                if (packet.IsInLiquidForm)
-                    InvokeProphecyAction("SwitchToLiquidState");
-                else
-                    InvokeProphecyAction("SwitchToDefaultState");
-
-                lastLiquidState = packet.IsInLiquidForm;
+                pendingPacket = packet;
+                hasPendingPacket = true;
             }
         }
 
@@ -63,7 +105,9 @@ namespace CalMP_Melon
             try
             {
                 object catAction = Enum.Parse(catActionType, actionName);
-                performActionMethod.Invoke(npcPathfinder, [ catAction, duration ]);
+                // Build parameter array for Invoke
+                object[] parameters = new object[] { catAction, duration };
+                performActionMethod.Invoke(npcPathfinder, parameters);
             }
             catch (Exception)
             {
