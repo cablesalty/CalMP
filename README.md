@@ -18,10 +18,19 @@ This is a multiplayer mod for the game [Cats are Liquid - A Better Place](https:
 This mod is still under development. As such, some features you might expect might not be present yet.
 
 ✅ means completed, 🟧 means that this feature is in development, ⬛ means the development has not yet started.
-- 🟧 Basic lobby management, inviting and kicking players, assinging players to cats, etc...
-- ⬛ Basics of the multiplayer working
+- ✅ Basic Steam lobby creation, leaving, invites, and member list
+- ✅ Basic two-player movement and cat-form synchronization (green cat only)
+- ⬛ Assigning players to the remaining cat colors
 - ⬛ Adding a cat when the worldpack doesn't support
 - ⬛ Automatic worldpack sharing (the mod auto-downloads the required worldpack for you)
+
+# Starting a game
+1. Both players launch the game through Steam with the mod installed and load the same level.
+2. Make sure that level has a pre-placed **green NPC cat**.
+3. Press **F1**, host a lobby, and use **Invite Friend** to invite the other player through Steam.
+4. Both players should see the other player's cat parts, left/right movement, jump/climb, and liquid/default form changes on the green NPC.
+
+The current implementation supports one remote player. It does not synchronize level loading or create missing NPCs; both players must be in the same level with a green NPC already placed.
 
 # Building and Contributing
 These are the steps required if you want to build the project for yourself, or if you want to contribute. **This is NOT required if you just want to play**.
@@ -79,5 +88,8 @@ After submitting your PR, a maintainer will review your code, request changes if
 
 ### Again, thank you for contributing to the project!
 
+# AI Usage disclosure
+**I believe there should be an AI disclosure on every project you might end up using, so you can consider the usage of it on your own depending on how you view AI generated code.** This project used AI as a major help in implementing the base for the multiplayer syncing to fill in the gaps of my steamworks knowledge. However I would not consider this project a vibecoded project because each change it made and new code it generated had been reviewed, tested properly, and later will be written on top of so the mod is not just two player only. The [previous multiplayer mod](https://github.com/cablesalty/CatsAreLiquid_Multiplayer) was also used by both the AI and me as a reference of previous solutions for the syncing of game specific stuff. I hope this is not a big dealbreaker for most people, as I want to be a person who uses AI responsibly.
+
 # Notes
-Thanks to [antalervin19](https://github.com/antalervin19) for doing a big chunk of the work!
+Thanks to [antalervin19](https://github.com/antalervin19) for doing a big chunk of the early work by helping set up lobbies!
