@@ -1,7 +1,5 @@
-﻿using CalMP_Melon;
-using Rewired;
+﻿using Steamworks;
 using System;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace CalMP_Melon
@@ -12,54 +10,36 @@ namespace CalMP_Melon
 
         public static void DrawInterface()
         {
-            GUILayout.BeginArea(new Rect(20, 20, 300, 250), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(20, 20, 320, 350), GUI.skin.box);
 
             GUILayout.Label("Cats are Liquid Multiplayer");
 
             if (steam == null)
             {
-                GUILayout.Label("Steam not initialized.");
+                GUILayout.Label(Steam.InitializationError == null
+                    ? "Waiting for the game to initialize Steam..."
+                    : $"Steam unavailable: {Steam.InitializationError}");
                 GUILayout.EndArea();
                 return;
             }
 
-            bool inLobby = Steam.CurrentLobby.Id.Value != 0;
-
-            // If the User Hosts a lobby, their "Host Lobby" button will turn into a "Disband Lobby" button
-            //
-            // If the User Joins a lobby, their "Host Lobby" button will turn into a "Disconnect" button
-
-            if (!inLobby)
+            if (!Steam.IsInLobby)
             {
                 if (GUILayout.Button("Host Lobby"))
-                {
-                    _ = steam.CreateLobbyAsync(3, "New Lobby");
-                }
+                    _ = steam.CreateLobbyAsync(2, "Cats are Liquid co-op");
+
                 GUILayout.Label("Not in a lobby.");
             }
             else
             {
-                bool isHost = Steam.CurrentLobby.Owner.IsMe;
-
-                if (isHost)
-                {
-                    if (GUILayout.Button("Disband Lobby"))
-                    {
-                        steam.LeaveLobby();
-                    }
-                }
-                else
-                {
-                    if (GUILayout.Button("Disconnect"))
-                    {
-                        steam.LeaveLobby();
-                    }
-                }
+                if (GUILayout.Button("Leave Lobby"))
+                    steam.LeaveLobby();
 
                 GUILayout.Space(10);
                 GUILayout.Label($"LobbyID: {Steam.CurrentLobby.Id}");
 
-                // Updated the Player list to show Host and "You".
+                if (GUILayout.Button("Invite Friend"))
+                    SteamFriends.OpenGameInviteOverlay(Steam.CurrentLobby.Id);
 
                 GUILayout.Label("Players:");
                 foreach (var player in Steam.CurrentLobby.Members)
@@ -69,6 +49,9 @@ namespace CalMP_Melon
 
                     GUILayout.Label($" - {player.Name}{role}");
                 }
+
+                GUILayout.Space(5);
+                GUILayout.Label("Remote cat: Green (pre-placed NPC required)");
             }
 
             GUILayout.EndArea();

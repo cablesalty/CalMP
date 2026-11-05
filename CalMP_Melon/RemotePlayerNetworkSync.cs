@@ -1,117 +1,236 @@
-﻿using Cat;
-using System;
-using System.Collections.Generic;
-using System.Reflection;
-using System.Text;
-using UnityEngine;
-using UnityEngine.Playables;
+using Cat;
 using Steamworks;
+using System;
+using UnityEngine;
 
 namespace CalMP_Melon
 {
     public class RemotePlayerNetworkSync : MonoBehaviour
     {
-        private Vector3 targetPosition;
-        private Vector2 lastVelocity;
-        private bool lastLiquidState;
+        private const float PositionCorrectionSpeed = 15f;
 
-        private GameObject catPart;
-        // Thread-safe packet handoff: network thread enqueues last packet, main thread applies it in FixedUpdate
+        private readonly Transform[] catParts = new Transform[PlayerStatePacket.MaxCatParts];
+        private readonly Rigidbody2D[] catPartBodies = new Rigidbody2D[PlayerStatePacket.MaxCatParts];
+        private readonly Vector2[] targetPositions = new Vector2[PlayerStatePacket.MaxCatParts];
+
+        private NPCPathfinder npcPathfinder;
+        private CatControls catControls;
         private PlayerStatePacket pendingPacket;
-        private readonly object packetLock = new object();
-        private bool hasPendingPacket = false;
+        private bool hasPendingPacket;
+        private bool hasReceivedPacket;
+        private sbyte movementDirection;
+        private bool isJumping;
+        private bool isInLiquidForm;
 
         public SteamId OwnerId;
 
-        private const float InterpolationSpeed = 15f;
-
-        void Start()
+        private void Start()
         {
-            var found = gameObject.transform.Find("Cat Part 0");
-            if (found != null)
-            {
-                catPart = found.gameObject;
-                targetPosition = catPart.transform.position;
-            }
-            else
-            {
-                Debug.Log("[RemotePlayerNetworkSync] Could not find 'Cat Part 0' on object. Falling back to root transform.");
-                catPart = gameObject;
-                targetPosition = gameObject.transform.position;
-            }
-    MelonLoader.MelonLogger.Msg($"[RemotePlayerNetworkSync] Started for OwnerId={OwnerId} initialPos={targetPosition}"); // touched for consistency.
-            // TODO: Add prophecy moves for the cat (for smoother movement)
+            CacheComponents();
+            CacheCatParts();
+
+            if (catControls != null)
+                isInLiquidForm = catControls.CurrentState == State.Liquid;
         }
 
-        void FixedUpdate()
+        private void FixedUpdate()
         {
-            if (catPart == null) return;
-            // Apply pending network packet on main thread if present
-            PlayerStatePacket? packetToApply = null;
-            lock (packetLock)
+            if (!OwnerId.IsValid || !hasReceivedPacket)
+                return;
+
+            ApplyPendingPacket();
+            CorrectCatPartPositions();
+        }
+
+        public void SetOwner(SteamId ownerId)
+        {
+            if (OwnerId == ownerId)
+                return;
+
+            if (OwnerId.IsValid)
+                CancelActions();
+
+            OwnerId = ownerId;
+            movementDirection = 0;
+            isJumping = false;
+            hasReceivedPacket = false;
+            CacheComponents();
+
+            if (OwnerId.IsValid)
             {
-                if (hasPendingPacket)
-                {
-                    packetToApply = pendingPacket;
-                    hasPendingPacket = false;
-                }
+                if (catControls != null)
+                    isInLiquidForm = catControls.CurrentState == State.Liquid;
+
+                InvokeProphecyAction(CatAction.StopMoving);
+                InvokeProphecyAction(CatAction.StopClimb);
             }
-
-            if (packetToApply.HasValue)
-            {
-                var packet = packetToApply.Value;
-                // Update targetPosition directly (keeps z)
-                targetPosition = new Vector3(packet.X, packet.Y, catPart.transform.position.z);
-                lastVelocity = new Vector2(packet.VelocityX, packet.VelocityY);
-                if (packet.IsInLiquidForm != lastLiquidState)
-                {
-                    if (packet.IsInLiquidForm)
-                        InvokeProphecyAction("SwitchToLiquidState");
-                    else
-                        InvokeProphecyAction("SwitchToDefaultState");
-
-                    lastLiquidState = packet.IsInLiquidForm;
-                }
-            }
-
-            // Use fixedDeltaTime in FixedUpdate for stable interpolation
-            catPart.transform.position = Vector3.Lerp(catPart.transform.position, targetPosition, Time.fixedDeltaTime * InterpolationSpeed);
-            //Core.ShowNotification($"X: {catPart.transform.position.x}, Y: {catPart.transform.position.x}");
         }
 
         public void OnDataReceived(PlayerStatePacket packet)
         {
-            // Log incoming network data for debugging
-            MelonLoader.MelonLogger.Msg($"[RemotePlayerNetworkSync] OnDataReceived called for OwnerId={OwnerId} rawPacket: X={packet.X} Y={packet.Y} VX={packet.VelocityX} VY={packet.VelocityY} IsInLiquidForm={packet.IsInLiquidForm}");
+            pendingPacket = packet;
+            hasPendingPacket = true;
+            hasReceivedPacket = true;
+        }
 
-            // Enqueue packet for main-thread application in FixedUpdate
-            lock (packetLock)
+        private void ApplyPendingPacket()
+        {
+            if (!hasPendingPacket)
+                return;
+
+            PlayerStatePacket packet = pendingPacket;
+            hasPendingPacket = false;
+
+            if (packet.CatParts != null)
             {
-                pendingPacket = packet;
-                hasPendingPacket = true;
+                int count = Math.Min(packet.CatParts.Length, PlayerStatePacket.MaxCatParts);
+                for (int i = 0; i < count; i++)
+                {
+                    if (!packet.CatParts[i].IsPresent)
+                        continue;
+
+                    targetPositions[i] = new Vector2(packet.CatParts[i].X, packet.CatParts[i].Y);
+                }
+            }
+
+            if (packet.MovementDirection != movementDirection)
+            {
+                if (movementDirection != 0)
+                    InvokeProphecyAction(CatAction.StopMoving);
+
+                if (packet.MovementDirection < 0)
+                    InvokeProphecyAction(CatAction.MoveLeft);
+                else if (packet.MovementDirection > 0)
+                    InvokeProphecyAction(CatAction.MoveRight);
+
+                movementDirection = packet.MovementDirection;
+            }
+
+            if (packet.IsJumping != isJumping)
+            {
+                if (packet.IsJumping)
+                {
+                    InvokeProphecyAction(CatAction.Climb);
+                    InvokeProphecyAction(CatAction.Jump);
+                }
+                else
+                {
+                    InvokeProphecyAction(CatAction.StopClimb);
+                }
+
+                isJumping = packet.IsJumping;
+            }
+
+            if (packet.IsInLiquidForm != isInLiquidForm)
+            {
+                InvokeProphecyAction(packet.IsInLiquidForm
+                    ? CatAction.SwitchToLiquidState
+                    : CatAction.SwitchToDefaultState);
+                isInLiquidForm = packet.IsInLiquidForm;
             }
         }
 
-        private void InvokeProphecyAction(string actionName, float duration = 0.0f)
+        private void CorrectCatPartPositions()
         {
-            // Taken from older mod
-            Component npcPathfinder = gameObject.GetComponent("NPCPathfinder");
-            if (npcPathfinder == null) return;
+            float interpolation = 1f - Mathf.Exp(-PositionCorrectionSpeed * Time.fixedDeltaTime);
+            for (int i = 0; i < catParts.Length; i++)
+            {
+                Transform part = catParts[i];
+                if (part == null)
+                    continue;
 
-            MethodInfo performActionMethod = npcPathfinder.GetType().GetMethod("PerformAction", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (performActionMethod == null) return;
-            Type catActionType = performActionMethod.GetParameters()[0].ParameterType;
+                Vector2 correctedPosition = Vector2.Lerp(
+                    part.position, targetPositions[i], interpolation);
+
+                Rigidbody2D body = catPartBodies[i];
+                if (body != null)
+                    body.MovePosition(correctedPosition);
+                else
+                    part.position = new Vector3(
+                        correctedPosition.x, correctedPosition.y, part.position.z);
+            }
+        }
+
+        private void CacheComponents()
+        {
+            if (npcPathfinder == null)
+                npcPathfinder = GetComponent<NPCPathfinder>();
+
+            if (catControls == null)
+            {
+                catControls = GetComponent<CatControls>();
+                if (catControls == null)
+                    catControls = GetComponentInChildren<CatControls>();
+            }
+        }
+
+        private void OnTransformChildrenChanged()
+        {
+            CacheCatParts();
+        }
+
+        private void CacheCatParts()
+        {
+            for (int i = 0; i < catParts.Length; i++)
+            {
+                catParts[i] = null;
+                catPartBodies[i] = null;
+            }
+
+            foreach (Transform child in GetComponentsInChildren<Transform>(true))
+            {
+                if (child == transform)
+                    continue;
+
+                for (int i = 0; i < PlayerStatePacket.MaxCatParts; i++)
+                {
+                    if (child.name != "Cat Part " + i)
+                        continue;
+
+                    catParts[i] = child;
+                    catPartBodies[i] = child.GetComponent<Rigidbody2D>();
+                    targetPositions[i] = child.position;
+                    break;
+                }
+            }
+        }
+
+        private void CancelActions()
+        {
+            if (movementDirection != 0)
+                InvokeProphecyAction(CatAction.StopMoving);
+            if (isJumping)
+                InvokeProphecyAction(CatAction.StopClimb);
+            if (isInLiquidForm)
+                InvokeProphecyAction(CatAction.SwitchToDefaultState);
+
+            movementDirection = 0;
+            isJumping = false;
+            isInLiquidForm = false;
+        }
+
+        private void InvokeProphecyAction(CatAction action)
+        {
+            if (npcPathfinder == null)
+            {
+                CacheComponents();
+                if (npcPathfinder == null)
+                {
+                    MelonLoader.MelonLogger.Warning(
+                        $"[RemotePlayerNetworkSync] Cannot apply {action}: NPCPathfinder is missing.");
+                    return;
+                }
+            }
 
             try
             {
-                object catAction = Enum.Parse(catActionType, actionName);
-                // Build parameter array for Invoke
-                object[] parameters = new object[] { catAction, duration };
-                performActionMethod.Invoke(npcPathfinder, parameters);
+                npcPathfinder.PerformAction(action, 0f);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                Core.ShowNotification("Error occoured while trying to execute a prophecy action.");
+                MelonLoader.MelonLogger.Error(
+                    $"[RemotePlayerNetworkSync] Failed to apply prophecy action {action}: {exception}");
+                Core.ShowNotification($"Could not apply remote cat action: {action}.");
             }
         }
     }

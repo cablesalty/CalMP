@@ -1,11 +1,7 @@
-﻿using MelonLoader;
-using Rewired;
+using MelonLoader;
 using Steamworks;
 using Steamworks.Data;
 using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace CalMP_Melon
@@ -13,244 +9,370 @@ namespace CalMP_Melon
     public class Steam
     {
         private readonly MelonLogger.Instance logger;
-        public static Lobby CurrentLobby;
-        private static Steam _instance;
-        private CancellationTokenSource receiveTokenSource;
+        private static Steam instance;
 
-        public static Steam Instance
-        {
-            get
-            {
-                return _instance;
-            }
-        }
+        public static Lobby CurrentLobby;
+        public static Steam Instance => instance;
+        public static bool IsInLobby => CurrentLobby.Id.IsValid;
+        public static bool IsReady => instance != null;
+        public static string InitializationError { get; private set; }
 
         public static void Init(MelonLogger.Instance logger)
         {
-            if (_instance == null)
-                _instance = new Steam(logger);
+            if (instance != null || InitializationError != null)
+                return;
+
+            if (!SteamClient.IsValid)
+                return;
+
+            try
+            {
+                instance = new Steam(logger);
+                InitializationError = null;
+                logger.Msg("[Steam] Connected to the game's initialized Steamworks client.");
+                Core.ShowNotification("Steam multiplayer ready.");
+            }
+            catch (Exception exception)
+            {
+                InitializationError = exception.Message;
+                logger.Error($"[Steam] Failed to initialize Steamworks: {exception}");
+                Core.ShowNotification("Steam initialization failed. Make sure Steam is running.");
+            }
         }
 
-        public Steam(MelonLogger.Instance logger)
+        private Steam(MelonLogger.Instance logger)
         {
             this.logger = logger;
 
+            SteamNetworking.AllowP2PPacketRelay(true);
+            SteamNetworking.OnP2PSessionRequest += OnP2PSessionRequest;
+            SteamNetworking.OnP2PConnectionFailed += OnP2PConnectionFailed;
             SteamMatchmaking.OnLobbyMemberJoined += OnLobbyMemberJoined;
             SteamMatchmaking.OnLobbyMemberLeave += OnMemberLeft;
             SteamFriends.OnGameLobbyJoinRequested += OnGameLobbyJoinRequested;
-            SteamClient.RunCallbacks();
-            StartReceiving();
         }
 
-        private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
+        private void OnGameLobbyJoinRequested(Lobby lobby, SteamId steamId)
         {
-            logger.Msg($"Received a lobby join request for lobby: {lobby.Id}");
-            Core.ShowNotification("Joining lobby...");
-
-            var joinResult = await SteamMatchmaking.JoinLobbyAsync(lobby.Id);
-
-            if (joinResult.HasValue) //Check if the join was successful (dumb Facepunch API..)
-            {
-                //This is required to set the CurrentLobby for the Client too! Othervise the client wont see the lobby.
-                CurrentLobby = joinResult.Value;
-                StartReceiving();
-                logger.Msg("Successfully joined the lobby.");
-                Core.ShowNotification("Joined lobby successfully!");
-            }
-            else
-            {
-                logger.Error("Failed to join lobby.");
-                Core.ShowNotification("Failed to join lobby.");
-            }
+            logger.Msg($"Received a lobby join request for lobby {lobby.Id} from {steamId}.");
+            _ = JoinLobbyAsync(lobby);
         }
 
-        //Receiving & Sending Functions
-        public void StartReceiving()
+        public async Task<bool> JoinLobbyAsync(Lobby lobby)
         {
-            StopReceiving();
-            receiveTokenSource = new CancellationTokenSource();
-            Task.Run(() => ReceiveLoop(receiveTokenSource.Token));
-            logger.Msg("[Steam] Receive loop started.");
+            if (!SteamClient.IsValid)
+            {
+                Core.ShowNotification("Steam is not initialized.");
+                return false;
+            }
+
+            if (CurrentLobby.Id == lobby.Id)
+                return true;
+
             if (CurrentLobby.Id.IsValid)
+                LeaveLobby();
+
+            Core.ShowNotification("Joining lobby...");
+            try
             {
-                logger.Msg($"[Steam] Current lobby valid: Id={CurrentLobby.Id}"); // Members={CurrentLobby.Members.Count}
-                foreach (var m in CurrentLobby.Members)
+                Lobby? joinResult = await SteamMatchmaking.JoinLobbyAsync(lobby.Id);
+                if (!joinResult.HasValue)
                 {
-                    logger.Msg($"[Steam] Lobby member: {m.Id} Name={m.Name} IsMe={m.IsMe}");
+                    logger.Error($"Failed to join lobby {lobby.Id}.");
+                    Core.ShowNotification("Failed to join lobby.");
+                    return false;
                 }
+
+                CurrentLobby = joinResult.Value;
+                logger.Msg($"Joined lobby {CurrentLobby.Id}.");
+                Core.ShowNotification("Joined lobby successfully!");
+                return true;
             }
-            else
+            catch (Exception exception)
             {
-                logger.Msg("[Steam] No valid CurrentLobby when starting receive loop.");
+                logger.Error($"Failed to join lobby {lobby.Id}: {exception}");
+                Core.ShowNotification("Failed to join lobby.");
+                return false;
             }
-            // No-op edit to ensure file update consistency.
-            // Patch applied to stabilize file state.
         }
 
-        public void StopReceiving()
+        public void PumpNetwork()
         {
-            receiveTokenSource?.Cancel();
-            receiveTokenSource?.Dispose();
-            receiveTokenSource = null;
-        }
+            if (!SteamClient.IsValid || !CurrentLobby.Id.IsValid)
+                return;
 
-        private async Task ReceiveLoop(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested)
+            while (SteamNetworking.IsP2PPacketAvailable(0))
             {
-                while (SteamNetworking.IsP2PPacketAvailable(0))
-                {
-                    var packet = SteamNetworking.ReadP2PPacket();
-                    if (packet.HasValue)
-                    {
-                        ProcessIncomingPacket(packet.Value.SteamId, packet.Value.Data);
-                    }
-                    else
-                    {
-                        logger.Msg("[Steam] ReadP2PPacket returned no value despite IsP2PPacketAvailable reporting true.");
-                    }
-                }
-                await Task.Delay(16, token); //16ms ~ 60FPS
+                var packet = SteamNetworking.ReadP2PPacket();
+                if (packet.HasValue)
+                    ProcessIncomingPacket(packet.Value.SteamId, packet.Value.Data);
+                else
+                    break;
             }
         }
 
         private void ProcessIncomingPacket(SteamId senderId, byte[] data)
         {
+            if (!IsLobbyMember(senderId) || senderId == SteamClient.SteamId)
+            {
+                logger.Warning($"Ignoring movement packet from non-member {senderId}.");
+                return;
+            }
+
             if (data == null || data.Length == 0)
             {
-                logger.Warning($"[Steam] Ignoring empty packet from {senderId}.");
+                logger.Warning($"Ignoring empty packet from {senderId}.");
                 return;
             }
 
             PacketType packetType = (PacketType)data[0];
-            logger.Msg($"[Steam] Processing incoming packet from {senderId} length={data.Length} type={(byte)packetType}");
-
-            switch (packetType)
+            if (packetType != PacketType.Movement)
             {
-                case PacketType.Movement:
-                    if (data.Length < PlayerStatePacket.MinSerializedSize)
-                    {
-                        logger.Warning($"[Steam] Dropping malformed movement packet from {senderId}: expected at least {PlayerStatePacket.MinSerializedSize} bytes but got {data.Length}.");
-                        return;
-                    }
-
-                    PlayerStatePacket statePacket = PlayerStatePacket.Deserialize(data);
-
-                    //Do movement
-                    HandlePlayerMovement(senderId, statePacket);
-                    // Route to in-game component
-                    RouteIncomingPlayerState(senderId, statePacket);
-                    break;
-
-                default:
-                    logger.Warning($"Received unknown packet type ID: {data[0]}");
-                    break;
-            }
-        }
-
-        private void HandlePlayerMovement(SteamId playerSteamId, PlayerStatePacket packet)
-        { }
-
-        // Public accessor to route incoming packet to the correct NPC instance
-        public void RouteIncomingPlayerState(SteamId playerSteamId, PlayerStatePacket packet)
-        {
-            if (Core.AvailableNPCs == null || Core.AvailableNPCs.Count == 0)
-            {
-                logger.Warning($"[Steam] No NPCs available to route packet from {playerSteamId}.");
+                logger.Warning($"Ignoring unknown packet type {data[0]} from {senderId}.");
                 return;
             }
 
-            // Find the RemotePlayerNetworkSync attached to any available NPCs matching this playerSteamId
+            if (data.Length < PlayerStatePacket.MinSerializedSize)
+            {
+                logger.Warning(
+                    $"Dropping malformed movement packet from {senderId}: expected at least " +
+                    $"{PlayerStatePacket.MinSerializedSize} bytes but received {data.Length}.");
+                return;
+            }
+
+            PlayerStatePacket statePacket;
+            try
+            {
+                statePacket = PlayerStatePacket.Deserialize(data);
+            }
+            catch (ArgumentException exception)
+            {
+                logger.Warning($"Dropping malformed movement packet from {senderId}: {exception.Message}");
+                return;
+            }
+
+            if (statePacket.CatParts != null)
+            {
+                foreach (CatPartPosition part in statePacket.CatParts)
+                {
+                    if (part.IsPresent && (!IsFinite(part.X) || !IsFinite(part.Y)))
+                    {
+                        logger.Warning($"Dropping movement packet with invalid cat-part positions from {senderId}.");
+                        return;
+                    }
+                }
+            }
+
+            RouteIncomingPlayerState(senderId, statePacket);
+        }
+
+        public void RouteIncomingPlayerState(SteamId playerSteamId, PlayerStatePacket packet)
+        {
+            if (!CurrentLobby.Id.IsValid || playerSteamId == SteamClient.SteamId ||
+                !IsLobbyMember(playerSteamId))
+            {
+                return;
+            }
+
             foreach (var npc in Core.AvailableNPCs)
             {
-                if (npc == null) continue;
-                var sync = npc.GetComponent<RemotePlayerNetworkSync>();
-                if (sync == null) continue;
-                if (sync.OwnerId == playerSteamId)
+                if (npc == null)
+                    continue;
+
+                RemotePlayerNetworkSync sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                if (sync != null && sync.OwnerId == playerSteamId)
                 {
                     sync.OnDataReceived(packet);
                     return;
                 }
             }
 
-            // If no matching OwnerId found, assign the first unowned NPC to avoid attaching every packet to a different NPC.
             foreach (var npc in Core.AvailableNPCs)
             {
-                if (npc == null) continue;
-                var sync = npc.GetComponent<RemotePlayerNetworkSync>();
-                if (sync == null || sync.OwnerId.IsValid) continue;
+                if (npc == null)
+                    continue;
 
-                sync.OwnerId = playerSteamId;
+                RemotePlayerNetworkSync sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                if (sync == null || sync.OwnerId.IsValid)
+                    continue;
+
+                sync.SetOwner(playerSteamId);
                 sync.OnDataReceived(packet);
-                logger.Msg($"[Steam] Assigned OwnerId {playerSteamId} to NPC {npc.name}");
+                logger.Msg($"Assigned {playerSteamId} to the green NPC {npc.name}.");
+                return;
+            }
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private bool IsLobbyMember(SteamId steamId)
+        {
+            foreach (Friend member in CurrentLobby.Members)
+            {
+                if (member.Id == steamId)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void OnP2PSessionRequest(SteamId remoteUser)
+        {
+            if (!CurrentLobby.Id.IsValid || !IsLobbyMember(remoteUser))
+            {
+                logger.Warning($"Ignoring P2P session request from non-member {remoteUser}.");
                 return;
             }
 
-            logger.Warning($"[Steam] Could not route packet from {playerSteamId}: no free NPC slots available.");
+            if (!SteamNetworking.AcceptP2PSessionWithUser(remoteUser))
+                logger.Warning($"Failed to accept P2P session from lobby member {remoteUser}.");
+            else
+                logger.Msg($"Accepted P2P session from {remoteUser}.");
         }
 
-
-        // Callback Hooks
+        private void OnP2PConnectionFailed(SteamId remoteUser, P2PSessionError error)
+        {
+            logger.Warning($"P2P connection to {remoteUser} failed: {error}.");
+        }
 
         private void OnLobbyMemberJoined(Lobby lobby, Friend member)
         {
-            logger.Msg($"{member.Name} joined the lobby");
+            if (!CurrentLobby.Id.IsValid || lobby.Id != CurrentLobby.Id)
+                return;
+
+            logger.Msg($"{member.Name} joined the lobby.");
             Core.ShowNotification($"{member.Name} joined the lobby.");
         }
 
         private void OnMemberLeft(Lobby lobby, Friend member)
         {
-            logger.Msg($"{member.Name} left the lobby");
-            Core.ShowNotification($"{member.Name} left the lobby.");
+            if (CurrentLobby.Id.IsValid && lobby.Id == CurrentLobby.Id)
+            {
+                foreach (var npc in Core.AvailableNPCs)
+                {
+                    if (npc == null)
+                        continue;
+
+                    RemotePlayerNetworkSync sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                    if (sync != null && sync.OwnerId == member.Id)
+                        sync.SetOwner(default);
+                }
+
+                SteamNetworking.CloseP2PSessionWithUser(member.Id);
+                logger.Msg($"{member.Name} left the lobby.");
+                Core.ShowNotification($"{member.Name} left the lobby.");
+            }
         }
 
-        public async Task<bool> CreateLobbyAsync(int maxPlayers, string lobbyName = "Lobby")
+        public async Task<bool> CreateLobbyAsync(int maxPlayers = 2, string lobbyName = "Lobby")
         {
-            var result = await SteamMatchmaking.CreateLobbyAsync(maxPlayers);
-            if (result is not Lobby lobby) return false;
+            if (!SteamClient.IsValid)
+            {
+                Core.ShowNotification("Steam is not initialized.");
+                return false;
+            }
 
-            lobby.SetPublic();
-            lobby.SetJoinable(true);
-            lobby.SetData("name", lobbyName);
-            lobby.MaxMembers = maxPlayers;
+            if (CurrentLobby.Id.IsValid)
+            {
+                Core.ShowNotification("You are already in a lobby.");
+                return false;
+            }
 
-            CurrentLobby = lobby;
-            StartReceiving();
+            if (maxPlayers < 2)
+            {
+                logger.Error("A multiplayer lobby must allow at least two players.");
+                Core.ShowNotification("A lobby must allow at least two players.");
+                return false;
+            }
 
-            return true;
+            try
+            {
+                Lobby? result = await SteamMatchmaking.CreateLobbyAsync(maxPlayers);
+                if (!result.HasValue)
+                {
+                    logger.Error("Steam failed to create a lobby.");
+                    Core.ShowNotification("Failed to create lobby.");
+                    return false;
+                }
+
+                Lobby lobby = result.Value;
+                lobby.SetPublic();
+                lobby.SetJoinable(true);
+                lobby.SetData("name", lobbyName);
+                lobby.MaxMembers = maxPlayers;
+
+                CurrentLobby = lobby;
+                logger.Msg($"Created lobby {CurrentLobby.Id}.");
+                Core.ShowNotification("Lobby created. Invite a friend to join.");
+                return true;
+            }
+            catch (Exception exception)
+            {
+                logger.Error($"Failed to create lobby: {exception}");
+                Core.ShowNotification("Failed to create lobby.");
+                return false;
+            }
         }
 
         public void LeaveLobby()
         {
-            if (CurrentLobby.Id.IsValid)
+            if (!CurrentLobby.Id.IsValid)
+                return;
+
+            Lobby lobby = CurrentLobby;
+            foreach (Friend member in lobby.Members)
             {
-                StopReceiving();
-                CurrentLobby.Leave();
-                CurrentLobby = default;
-                logger.Msg("Left the lobby.");
-                Core.ShowNotification("You have left the lobby.");
+                if (!member.IsMe)
+                    SteamNetworking.CloseP2PSessionWithUser(member.Id);
             }
+
+            foreach (var npc in Core.AvailableNPCs)
+            {
+                if (npc == null)
+                    continue;
+
+                RemotePlayerNetworkSync sync = npc.GetComponent<RemotePlayerNetworkSync>();
+                if (sync != null)
+                    sync.SetOwner(default);
+            }
+
+            CurrentLobby = default;
+            lobby.Leave();
+            logger.Msg("Left the lobby.");
+            Core.ShowNotification("You have left the lobby.");
         }
 
         public static void SendPlayerStatePacket(PlayerStatePacket packet)
         {
-            if (!CurrentLobby.Id.IsValid)
-            {
-                MelonLoader.MelonLogger.Msg("[Steam] SendPlayerStatePacket skipped: no valid CurrentLobby.");
+            if (!SteamClient.IsValid || !CurrentLobby.Id.IsValid)
                 return;
-            }
 
             byte[] data = packet.Serialize();
-
-            int attempted = 0;
-            foreach (var member in CurrentLobby.Members)
+            foreach (Friend member in CurrentLobby.Members)
             {
-                if (member.Id == SteamClient.SteamId) continue;
-                attempted++;
-                bool ok = SteamNetworking.SendP2PPacket(member.Id, data, data.Length, 0, P2PSend.Unreliable);
-                if (!ok) MelonLoader.MelonLogger.Msg($"[Steam] Failed to send P2P packet to {member.Id}");
+                if (member.IsMe)
+                    continue;
+
+                bool sent = SteamNetworking.SendP2PPacket(
+                    member.Id, data, data.Length, 0, P2PSend.Unreliable);
+                if (!sent)
+                    Instance.logger.Warning($"Failed to send movement packet to {member.Id}.");
             }
-            MelonLoader.MelonLogger.Msg($"[Steam] SendPlayerStatePacket: attempted sends={attempted}"); // lobbyMembers={CurrentLobby.Members.Count}
+        }
+
+        public void Shutdown()
+        {
+            LeaveLobby();
+            SteamMatchmaking.OnLobbyMemberJoined -= OnLobbyMemberJoined;
+            SteamMatchmaking.OnLobbyMemberLeave -= OnMemberLeft;
+            SteamFriends.OnGameLobbyJoinRequested -= OnGameLobbyJoinRequested;
+            SteamNetworking.OnP2PSessionRequest -= OnP2PSessionRequest;
+            SteamNetworking.OnP2PConnectionFailed -= OnP2PConnectionFailed;
+
+            instance = null;
         }
     }
 }
