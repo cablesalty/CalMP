@@ -10,7 +10,7 @@ This is a multiplayer mod for the game [Cats are Liquid - A Better Place](https:
 
 ## Installation steps
 1. Install MelonLoader [from their site](https://melon-loader.com/) or [GitHub (releases)](https://github.com/LavaGang/MelonLoader/releases/), and mod the game
-2. Download the mod from [the releases tab](https://github.com/LavaGang/MelonLoader/releases/)
+2. Download the mod from [the releases tab](https://github.com/cablesalty/CalMP/releases)
 3. Copy the mod into the game's `mods` folder (game's folder can be opened by locating the game in your steam library, then clicking `Settings > Manage > Browse local files`)
 4. Launch the game. If you succeeded, there should be a notification telling you the mod loaded correctly.
 
